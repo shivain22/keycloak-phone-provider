@@ -27,8 +27,8 @@ import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.validation.Validation;
 
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.Response;
 
 import java.util.List;
 
@@ -185,7 +185,7 @@ public class PhoneUsernamePasswordForm extends UsernamePasswordForm implements A
       context.form().setAttribute(ATTEMPTED_PHONE_ACTIVATED, true)
           .setAttribute(ATTEMPTED_PHONE_NUMBER, phoneNumber);
       assemblyForm(context,context.form());
-      Response challengeResponse = challenge(context, disabledByBruteForceError(), disabledByBruteForceFieldError());
+      Response challengeResponse = challenge(context, disabledByBruteForceError ( ""), disabledByBruteForceFieldError());
       context.forceChallenge(challengeResponse);
       return true;
     }

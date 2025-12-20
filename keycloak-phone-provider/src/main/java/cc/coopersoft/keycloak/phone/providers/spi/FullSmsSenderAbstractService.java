@@ -19,7 +19,7 @@ public abstract class FullSmsSenderAbstractService implements MessageSenderServi
 
     private final String realmDisplay;
 
-    private final KeycloakSession session;
+    public final KeycloakSession session;
 
     @Deprecated
     public FullSmsSenderAbstractService(String realmDisplay) {
@@ -56,7 +56,7 @@ public abstract class FullSmsSenderAbstractService implements MessageSenderServi
         if (this.session != null) {
             try {
                 // Get login theme
-                final String loginThemeName = session.getContext().getRealm().getLoginTheme();
+                /*final String loginThemeName = session.getContext().getRealm().getLoginTheme();
                 final Theme loginTheme = session.theme().getTheme(loginThemeName, Theme.Type.LOGIN);
 
                 // Try get locale from user associated with phone number (if any)
@@ -65,9 +65,8 @@ public abstract class FullSmsSenderAbstractService implements MessageSenderServi
                 final Optional<String> userLocale = user.map(u -> u.getFirstAttribute(UserModel.LOCALE));
 
                 // Use locale from user or default to realm locale
-                final String localeName = userLocale.isPresent() ? userLocale.get()
-                        : session.getContext().getRealm().getDefaultLocale();
-                final Locale locale = Locale.forLanguageTag(localeName);
+                final String localeName = userLocale.orElse(session.getContext().getRealm().getDefaultLocale());
+                final Locale locale = localeName != null ? Locale.forLanguageTag(localeName) : Locale.getDefault();
 
                 // Get message template from login theme bundle
                 final Properties messages = loginTheme.getMessages(locale);
@@ -79,8 +78,9 @@ public abstract class FullSmsSenderAbstractService implements MessageSenderServi
                 }
 
                 // Format message
-                MessageFormat mf = new MessageFormat(messageTemplate, locale);
-                return Optional.of(mf.format(new Object[] { realmDisplay, type.label, code, expires / 60 }));
+                MessageFormat mf = new MessageFormat(messageTemplate, locale);*/
+                //return Optional.of(mf.format(new Object[] { realmDisplay, type.label, code, expires / 60 }));
+                return Optional.of(code);
             } catch (Exception ex) {
                 logger.error("Error while trying to localize message", ex);
                 return Optional.empty();

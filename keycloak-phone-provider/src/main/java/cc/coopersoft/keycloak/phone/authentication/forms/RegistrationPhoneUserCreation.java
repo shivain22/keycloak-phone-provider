@@ -24,7 +24,7 @@ import org.keycloak.userprofile.UserProfileContext;
 import org.keycloak.userprofile.UserProfileProvider;
 import org.keycloak.userprofile.ValidationException;
 
-import javax.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.MultivaluedMap;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -235,23 +235,23 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
     }
 
     UserProfileProvider profileProvider = session.getProvider(UserProfileProvider.class);
-    UserProfile profile = profileProvider.create(UserProfileContext.REGISTRATION_USER_CREATION, formData);
+    UserProfile profile = profileProvider.create(UserProfileContext.REGISTRATION, formData);
 
-    String username = profile.getAttributes().getFirstValue(UserModel.USERNAME);
+    String username = profile.getAttributes().getFirst(UserModel.USERNAME);
     context.getEvent().detail(Details.USERNAME, username);
 
     boolean hideName = isHideName(context);
     boolean hideEmail = isHideEmail(context);
 
     if (!hideName){
-      String firstName = profile.getAttributes().getFirstValue(UserModel.FIRST_NAME);
-      String lastName = profile.getAttributes().getFirstValue(UserModel.LAST_NAME);
+      String firstName = profile.getAttributes().getFirst(UserModel.FIRST_NAME);
+      String lastName = profile.getAttributes().getFirst(UserModel.LAST_NAME);
       context.getEvent().detail(Details.FIRST_NAME, firstName);
       context.getEvent().detail(Details.LAST_NAME, lastName);
     }
 
     if (!hideEmail){
-      String email = profile.getAttributes().getFirstValue(UserModel.EMAIL);
+      String email = profile.getAttributes().getFirst(UserModel.EMAIL);
       context.getEvent().detail(Details.EMAIL, email);
       if (context.getRealm().isRegistrationEmailAsUsername()){
         context.getEvent().detail(Details.USERNAME, email);
@@ -261,15 +261,18 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
     try {
       profile.validate();
     } catch (ValidationException pve) {
-      if (pve.hasError(Messages.EMAIL_EXISTS)) {
-        context.error(Errors.EMAIL_IN_USE);
-      } else if (pve.hasError(Messages.MISSING_EMAIL, Messages.MISSING_USERNAME, Messages.INVALID_EMAIL)) {
-        context.error(Errors.INVALID_REGISTRATION);
-      } else if (pve.hasError(Messages.USERNAME_EXISTS)) {
-        context.error(Errors.USERNAME_IN_USE);
+      List<FormMessage> validationErrors = Validation.getFormErrorsFromValidation(pve.getErrors());
+      for (FormMessage error : validationErrors) {
+        if (Messages.EMAIL_EXISTS.equals(error.getMessage())) {
+          context.error(Errors.EMAIL_IN_USE);
+        } else if (Messages.USERNAME_EXISTS.equals(error.getMessage())) {
+          context.error(Errors.USERNAME_IN_USE);
+        } else {
+          context.error(Errors.INVALID_REGISTRATION);
+        }
       }
       success = false;
-      errors.addAll(Validation.getFormErrorsFromValidation(pve.getErrors()));
+      errors.addAll(validationErrors);
     }
 
     if (success) {
@@ -299,7 +302,7 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
       username = email;
     } else if (isPhoneNumberAsUsername(context)){
       username = phoneNumber;
-      formData.add(UserModel.USERNAME,phoneNumber);
+      formData.putSingle(UserModel.USERNAME,phoneNumber);
     }
 
     context.getEvent().detail(Details.USERNAME, username)
@@ -310,12 +313,16 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
       context.getEvent().detail(Details.EMAIL,email);
     }
 
+    formData.putSingle("phoneNumber", phoneNumber);
     UserProfileProvider profileProvider = session.getProvider(UserProfileProvider.class);
-    UserProfile profile = profileProvider.create(UserProfileContext.REGISTRATION_USER_CREATION, formData);
+    UserProfile profile = profileProvider.create(UserProfileContext.REGISTRATION, formData);
+    logger.infov("Creating user with formData containing phoneNumber: {0}", phoneNumber);
     UserModel user = profile.create();
 
 //    UserModel user = context.getSession().users().addUser(context.getRealm(), username);
     user.setEnabled(true);
+    user.setSingleAttribute("phoneNumber", phoneNumber);
+    logger.infov("Set phoneNumber attribute to: {0} for user: {1}", phoneNumber, user.getUsername());
     context.setUser(user);
 
     context.getAuthenticationSession().setClientNote(OIDCLoginProtocol.LOGIN_HINT_PARAM, username);

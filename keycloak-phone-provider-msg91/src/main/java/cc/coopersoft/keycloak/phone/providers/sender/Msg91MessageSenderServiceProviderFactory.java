@@ -6,15 +6,17 @@ import org.keycloak.Config;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 
-public class DummyMessageSenderServiceProviderFactory implements MessageSenderServiceProviderFactory {
+public class Msg91MessageSenderServiceProviderFactory implements MessageSenderServiceProviderFactory {
 
+    private Config.Scope config;
     @Override
     public MessageSenderService create(KeycloakSession keycloakSession) {
-        return new DummySmsSenderService(keycloakSession.getContext().getRealm().getDisplayName());
+        return new Msg91SmsSenderService(config, keycloakSession);
     }
 
     @Override
-    public void init(Config.Scope scope) {
+    public void init(Config.Scope config) {
+        this.config = config;
     }
 
     @Override
@@ -27,6 +29,6 @@ public class DummyMessageSenderServiceProviderFactory implements MessageSenderSe
 
     @Override
     public String getId() {
-        return "dummy";
+        return "msg91";
     }
 }

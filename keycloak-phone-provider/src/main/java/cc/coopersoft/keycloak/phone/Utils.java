@@ -16,7 +16,6 @@ import org.keycloak.models.credential.dto.OTPSecretData;
 import org.keycloak.services.validation.Validation;
 import org.keycloak.util.JsonSerialization;
 
-import javax.validation.constraints.NotNull;
 import java.io.IOException;
 import java.util.*;
 import java.util.function.Predicate;
@@ -27,6 +26,7 @@ public class Utils {
 
     public static Optional<UserModel> findUserByPhone(KeycloakSession session,RealmModel realm, String phoneNumber){
 
+        logger.infov("Searching for user with phone number: {0}", phoneNumber);
         var userProvider = session.users();
         Set<String> numbers = new HashSet<>();
         numbers.add(phoneNumber);
@@ -91,7 +91,7 @@ public class Utils {
     * international canonical form
     *
     */
-    public static String canonicalizePhoneNumber(KeycloakSession session,@NotNull String phoneNumber) throws PhoneNumberInvalidException {
+    public static String canonicalizePhoneNumber(KeycloakSession session,String phoneNumber) throws PhoneNumberInvalidException {
         var provider = session.getProvider(PhoneProvider.class);
 
 

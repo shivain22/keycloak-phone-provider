@@ -10,7 +10,7 @@ import org.keycloak.models.UserModel;
 import org.keycloak.models.credential.dto.OTPSecretData;
 import org.keycloak.util.JsonSerialization;
 
-import javax.validation.constraints.NotNull;
+
 import java.io.IOException;
 import java.util.Date;
 import java.util.Optional;
@@ -26,12 +26,12 @@ public class PhoneOtpCredentialModel extends CredentialModel {
         this.secretData = secretData;
     }
 
-    private static Optional<CredentialModel> getOtpCredentialModel(@NotNull UserModel user){
+    private static Optional<CredentialModel> getOtpCredentialModel( UserModel user){
         return user.credentialManager()
             .getStoredCredentialsByTypeStream(PhoneOtpCredentialModel.TYPE).findFirst();
     }
 
-    public static Optional<PhoneOtpCredentialModel.SmsOtpCredentialData> getSmsOtpCredentialData(@NotNull UserModel user){
+    public static Optional<PhoneOtpCredentialModel.SmsOtpCredentialData> getSmsOtpCredentialData( UserModel user){
         return getOtpCredentialModel(user)
             .map(credentialModel -> {
                 try {
@@ -42,8 +42,8 @@ public class PhoneOtpCredentialModel extends CredentialModel {
             });
     }
 
-    public static void updateOtpCredential(@NotNull UserModel user,
-                                           @NotNull PhoneOtpCredentialModel.SmsOtpCredentialData credentialData,
+    public static void updateOtpCredential( UserModel user,
+                                            PhoneOtpCredentialModel.SmsOtpCredentialData credentialData,
                                            String secretValue){
         getOtpCredentialModel(user)
             .ifPresent(credential -> {
