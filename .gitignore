@@ -1,6 +1,10 @@
 # Keycloak installation
 keycloak-26.4.7/
 
+# PostgreSQL data
+postgres/data/
+postgres/logs/
+
 # Build artifacts
 target/
 *.jar
