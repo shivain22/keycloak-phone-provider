@@ -5,6 +5,12 @@ keycloak-26.4.7/
 postgres/data/
 postgres/logs/
 
+# Temporary build directories
+temp/
+
+# Providers directory (generated)
+providers/
+
 # Build artifacts
 target/
 *.jar

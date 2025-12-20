@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: keycloak-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.7
+    container_name: keycloak-server
+    environment:
+      # Database
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      KC_DB_USERNAME: ${DB_USER}
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+      
+      # Keycloak Admin
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      
+      # Phone Provider Configuration
+      KC_SPI_PHONE_DEFAULT_SERVICE: ${SMS_PROVIDER}
+      KC_SPI_PHONE_DEFAULT_TOKEN_EXPIRES_IN: ${SMS_TOKEN_EXPIRES}
+      KC_SPI_PHONE_DEFAULT_SOURCE_HOUR_MAXIMUM: ${SMS_SOURCE_HOUR_MAX}
+      KC_SPI_PHONE_DEFAULT_TARGET_HOUR_MAXIMUM: ${SMS_TARGET_HOUR_MAX}
+      KC_SPI_PHONE_DEFAULT_RMSU_DUPLICATE_PHONE: ${DUPLICATE_PHONE}
+      KC_SPI_PHONE_DEFAULT_RMSU_DEFAULT_NUMBER_REGEX: ${PHONE_REGEX}
+      KC_SPI_PHONE_DEFAULT_RMSU_VALID_PHONE: ${VALID_PHONE}
+      KC_SPI_PHONE_DEFAULT_RMSU_CANONICALIZE_PHONE_NUMBERS: ${CANONICALIZE_PHONE}
+      KC_SPI_PHONE_DEFAULT_RMSU_PHONE_DEFAULT_REGION: ${PHONE_DEFAULT_REGION}
+      KC_SPI_PHONE_DEFAULT_RMSU_COMPATIBLE: ${PHONE_COMPATIBLE}
+      KC_SPI_PHONE_DEFAULT_RMSU_OTP_EXPIRES: ${OTP_EXPIRES}
+      
+      # MSG91 Configuration
+      KC_SPI_MESSAGE_SENDER_SERVICE_MSG91_URL: ${MSG91_URL}
+      KC_SPI_MESSAGE_SENDER_SERVICE_MSG91_AUTHKEY: ${MSG91_AUTH_KEY}
+      KC_SPI_MESSAGE_SENDER_SERVICE_MSG91_TEMPLATEID: ${MSG91_TEMPLATE_ID}
+      
+      # JVM Options
+      JAVA_OPTS: "-Duser.timezone=UTC"
+      
+    command:
+      - start-dev
+      - --import-realm
+    volumes:
+      - ./providers:/opt/keycloak/providers
+      - ./realm:/opt/keycloak/data/import
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  postgres_data:
