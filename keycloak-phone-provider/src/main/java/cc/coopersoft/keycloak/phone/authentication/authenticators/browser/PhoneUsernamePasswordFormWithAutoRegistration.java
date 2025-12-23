@@ -66,15 +66,20 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
 
     @Override
     protected boolean validateForm(AuthenticationFlowContext context, MultivaluedMap<String, String> inputData) {
+        logger.info("[AUTO-REGISTRATION] PhoneUsernamePasswordFormWithAutoRegistration.validateForm() called - Auto-registration authenticator is active");
+        
         boolean byPhone = OptionalUtils
                 .ofBlank(inputData.getFirst(FIELD_PATH_PHONE_ACTIVATED))
                 .map(s -> "true".equalsIgnoreCase(s) || "yes".equalsIgnoreCase(s))
                 .orElse(false);
 
         if (!byPhone) {
+            logger.info("[AUTO-REGISTRATION] Using username/password validation (not phone)");
             return validateUserAndPassword(context, inputData);
         }
 
+        logger.info("[AUTO-REGISTRATION] Using phone validation with auto-registration enabled: " + isAutoRegistrationEnabled(context));
+        
         String phoneNumber = inputData.getFirst(FIELD_PHONE_NUMBER);
 
         if (Validation.isBlank(phoneNumber)) {
@@ -96,16 +101,24 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
     }
 
     private boolean validatePhoneWithAutoRegistration(AuthenticationFlowContext context, String phoneNumber, String code) {
+        logger.info("[AUTO-REGISTRATION] validatePhoneWithAutoRegistration called for phone: " + phoneNumber);
         context.clearUser();
         try {
             var validPhoneNumber = Utils.canonicalizePhoneNumber(context.getSession(), phoneNumber);
+            logger.info("[AUTO-REGISTRATION] Canonicalized phone number: " + validPhoneNumber);
 
             return Utils.findUserByPhone(context.getSession(), context.getRealm(), validPhoneNumber)
-                    .map(user -> validateVerificationCodeForUser(context, user, validPhoneNumber, code) && validateUserForPhone(context, user, validPhoneNumber))
+                    .map(user -> {
+                        logger.info("[AUTO-REGISTRATION] User found for phone: " + validPhoneNumber + ", proceeding with normal login");
+                        return validateVerificationCodeForUser(context, user, validPhoneNumber, code) && validateUserForPhone(context, user, validPhoneNumber);
+                    })
                     .orElseGet(() -> {
+                        logger.info("[AUTO-REGISTRATION] User NOT found for phone: " + validPhoneNumber + ", auto-registration enabled: " + isAutoRegistrationEnabled(context));
                         if (isAutoRegistrationEnabled(context)) {
+                            logger.info("[AUTO-REGISTRATION] Attempting auto-registration for phone: " + validPhoneNumber);
                             return handleAutoRegistration(context, validPhoneNumber, code);
                         } else {
+                            logger.info("[AUTO-REGISTRATION] Auto-registration disabled, returning user not found error");
                             context.getEvent().error(Errors.USER_NOT_FOUND);
                             context.form().setAttribute(ATTEMPTED_PHONE_ACTIVATED, true)
                                     .setAttribute(ATTEMPTED_PHONE_NUMBER, phoneNumber);
@@ -116,6 +129,7 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
                         }
                     });
         } catch (PhoneNumberInvalidException e) {
+            logger.error("[AUTO-REGISTRATION] Phone number validation failed: " + e.getMessage());
             context.getEvent().error(Errors.USERNAME_MISSING);
             context.form().setAttribute(ATTEMPTED_PHONE_ACTIVATED, true)
                     .setAttribute(ATTEMPTED_PHONE_NUMBER, phoneNumber);
@@ -156,14 +170,22 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
     }
 
     private boolean handleAutoRegistration(AuthenticationFlowContext context, String phoneNumber, String code) {
+        logger.info("[AUTO-REGISTRATION] handleAutoRegistration started for phone: " + phoneNumber);
+        
         // First validate the OTP code
         if (!validateVerificationCodeForAutoReg(context, phoneNumber, code)) {
+            logger.warn("[AUTO-REGISTRATION] OTP validation failed for phone: " + phoneNumber);
             return false;
         }
+        
+        logger.info("[AUTO-REGISTRATION] OTP validation successful, proceeding with user creation");
 
         // Check if username conflicts exist
         String username = isAutoRegPhoneAsUsername(context) ? phoneNumber : generateUsername(phoneNumber);
+        logger.info("[AUTO-REGISTRATION] Generated username: " + username);
+        
         if (context.getSession().users().getUserByUsername(context.getRealm(), username) != null) {
+            logger.warn("[AUTO-REGISTRATION] Username conflict detected: " + username);
             context.getEvent().error(Errors.USERNAME_IN_USE);
             context.form().setAttribute(ATTEMPTED_PHONE_ACTIVATED, true)
                     .setAttribute(ATTEMPTED_PHONE_NUMBER, phoneNumber);
@@ -176,20 +198,26 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
         // Create new user
         UserModel newUser = createUserWithPhone(context, phoneNumber);
         if (newUser == null) {
+            logger.error("[AUTO-REGISTRATION] User creation failed for phone: " + phoneNumber);
             return false;
         }
+        
+        logger.info("[AUTO-REGISTRATION] User created successfully: " + newUser.getUsername());
 
         // Mark OTP as validated
         try {
             context.getSession().getProvider(PhoneVerificationCodeProvider.class)
                     .validateCode(newUser, phoneNumber, code, TokenCodeType.AUTH);
+            logger.info("[AUTO-REGISTRATION] OTP marked as validated for new user");
         } catch (Exception e) {
-            logger.warn("Failed to validate OTP during auto-registration", e);
+            logger.warn("[AUTO-REGISTRATION] Failed to validate OTP during auto-registration", e);
             invalidVerificationCode(context, phoneNumber);
             return false;
         }
 
-        return validateUserForPhone(context, newUser, phoneNumber);
+        boolean result = validateUserForPhone(context, newUser, phoneNumber);
+        logger.info("[AUTO-REGISTRATION] Auto-registration completed successfully: " + result);
+        return result;
     }
 
     private boolean validateVerificationCodeForAutoReg(AuthenticationFlowContext context, String phoneNumber, String code) {
@@ -321,6 +349,7 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
 
     @Override
     public Authenticator create(KeycloakSession session) {
+        logger.info("[AUTO-REGISTRATION] PhoneUsernamePasswordFormWithAutoRegistration authenticator factory create() called - ID: " + PROVIDER_ID);
         return this;
     }
 
