@@ -34,7 +34,7 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
 
     private static final Logger logger = Logger.getLogger(PhoneUsernamePasswordFormWithAutoRegistration.class);
 
-    public static final String PROVIDER_ID = "auth-phone-username-password-form-with-auto-registration";
+    public static final String PROVIDER_ID = "auth-phone-auto-reg-form";
 
     private static final String CONFIG_ENABLE_AUTO_REGISTRATION = "enableAutoRegistration";
     private static final String CONFIG_AUTO_REG_PHONE_AS_USERNAME = "autoRegPhoneAsUsername";
