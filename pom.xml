@@ -119,8 +119,6 @@
                     <version>${maven.compiler-plugin.version}</version>
                     <configuration>
                         <release>21</release>
-                        <fork>true</fork>
-                        <executable>C:\Program Files\Eclipse Adoptium\jdk-21.0.9.10-hotspot\bin\javac</executable>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -148,6 +146,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-toolchains-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
