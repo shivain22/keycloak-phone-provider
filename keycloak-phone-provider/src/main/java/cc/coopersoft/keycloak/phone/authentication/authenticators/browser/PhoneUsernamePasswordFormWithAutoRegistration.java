@@ -11,26 +11,33 @@ import org.keycloak.Config;
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.Authenticator;
-import org.keycloak.authentication.AuthenticatorFactory;
+import org.keycloak.authentication.authenticators.browser.AbstractUsernameFormAuthenticator;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.*;
+import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
+import org.keycloak.services.ServicesLogger;
+import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.messages.Messages;
 import org.keycloak.services.validation.Validation;
 
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 
+import java.net.URI;
 import java.util.List;
 
 import static cc.coopersoft.keycloak.phone.authentication.forms.SupportPhonePages.*;
 import static org.keycloak.provider.ProviderConfigProperty.BOOLEAN_TYPE;
+import static org.keycloak.services.validation.Validation.FIELD_USERNAME;
 
-public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsernamePasswordForm implements Authenticator, AuthenticatorFactory {
+public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsernamePasswordForm {
 
     private static final Logger logger = Logger.getLogger(PhoneUsernamePasswordFormWithAutoRegistration.class);
 
@@ -40,6 +47,7 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
     private static final String CONFIG_AUTO_REG_PHONE_AS_USERNAME = "autoRegPhoneAsUsername";
     private static final String CONFIG_IS_LOGIN_WITH_PHONE_VERIFY = "loginWithPhoneVerify";
     private static final String CONFIG_IS_LOGIN_WITH_PHONE_NUMBER = "loginWithPhoneNumber";
+    private static final String CONFIG_REDIRECT_TO_REGISTRATION_ON_USER_NOT_FOUND = "redirectToRegistrationOnUserNotFound";
     public static final String VERIFIED_PHONE_NUMBER = "LOGIN_BY_PHONE_VERIFY";
 
     private boolean isAutoRegistrationEnabled(AuthenticationFlowContext context) {
@@ -62,6 +70,12 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
     private boolean isSupportPhone(AuthenticationFlowContext context){
         return context.getAuthenticatorConfig() == null ||
                 context.getAuthenticatorConfig().getConfig().getOrDefault(CONFIG_IS_LOGIN_WITH_PHONE_VERIFY, "true").equals("true");
+    }
+
+    private boolean isRedirectToRegistrationOnUserNotFound(AuthenticationFlowContext context) {
+        return context.getAuthenticatorConfig() != null &&
+                "true".equals(context.getAuthenticatorConfig().getConfig()
+                        .getOrDefault(CONFIG_REDIRECT_TO_REGISTRATION_ON_USER_NOT_FOUND, "false"));
     }
 
     @Override
@@ -98,6 +112,113 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
         }
 
         return validatePhoneWithAutoRegistration(context, phoneNumber, code.trim());
+    }
+
+    @Override
+    public boolean validateUserAndPassword(AuthenticationFlowContext context, MultivaluedMap<String, String> inputData) {
+        logger.info("[AUTO-REGISTRATION] validateUserAndPassword called - checking for user");
+        
+        String username = inputData.getFirst(AuthenticationManager.FORM_USERNAME);
+        if (username == null) {
+            context.getEvent().error(Errors.USER_NOT_FOUND);
+            assemblyForm(context, context.form());
+            Response challengeResponse = challenge(context, getDefaultChallengeMessage(context), FIELD_USERNAME);
+            context.failureChallenge(AuthenticationFlowError.INVALID_USER, challengeResponse);
+            return false;
+        }
+
+        // remove leading and trailing whitespace
+        username = username.trim();
+        
+        context.getEvent().detail(Details.USERNAME, username);
+        context.getAuthenticationSession().setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, username);
+
+        // Try to find the user
+        UserModel user = null;
+        try {
+            user = KeycloakModelUtils.findUserByNameOrEmail(context.getSession(), context.getRealm(), username);
+            if (user == null && isLoginWithPhoneNumber(context) && !Utils.isDuplicatePhoneAllowed(context.getSession())) {
+                user = Utils.findUserByPhone(context.getSession(), context.getRealm(), username).orElse(null);
+            }
+        } catch (ModelDuplicateException mde) {
+            ServicesLogger.LOGGER.modelDuplicateException(mde);
+            if (mde.getDuplicateFieldName() != null && mde.getDuplicateFieldName().equals(UserModel.EMAIL)) {
+                setDuplicateUserChallenge(context, Errors.EMAIL_IN_USE, Messages.EMAIL_EXISTS, AuthenticationFlowError.INVALID_USER);
+            } else {
+                setDuplicateUserChallenge(context, Errors.USERNAME_IN_USE, Messages.USERNAME_EXISTS, AuthenticationFlowError.INVALID_USER);
+            }
+            return false;
+        }
+
+        // If user not found and redirect to registration is enabled
+        if (user == null) {
+            logger.info("[AUTO-REGISTRATION] User not found for username: " + username);
+            
+            if (isRedirectToRegistrationOnUserNotFound(context) && context.getRealm().isRegistrationAllowed()) {
+                logger.info("[AUTO-REGISTRATION] Redirecting to registration page for user: " + username);
+                return redirectToRegistration(context, username);
+            }
+            
+            // Default behavior - show invalid credentials error
+            logger.info("[AUTO-REGISTRATION] Redirect to registration not enabled, showing error");
+            context.getEvent().error(Errors.USER_NOT_FOUND);
+            assemblyForm(context, context.form());
+            Response challengeResponse = challenge(context, getDefaultChallengeMessage(context), FIELD_USERNAME);
+            context.failureChallenge(AuthenticationFlowError.INVALID_USER, challengeResponse);
+            return false;
+        }
+
+        // User found - validate password
+        boolean shouldClearUserFromCtxAfterBadPassword = !isUserAlreadySetBeforeUsernamePasswordAuth(context);
+        return validatePassword(context, user, inputData, shouldClearUserFromCtxAfterBadPassword) && validateUserForLogin(context, user, inputData);
+    }
+
+    private boolean redirectToRegistration(AuthenticationFlowContext context, String attemptedUsername) {
+        try {
+            // Build the registration URL
+            URI registrationUri = UriBuilder.fromUri(context.getActionUrl(context.generateAccessCode()))
+                    .replacePath(context.getUriInfo().getBaseUri().getPath() + "realms/" + context.getRealm().getName() + "/login-actions/registration")
+                    .queryParam("client_id", context.getAuthenticationSession().getClient().getClientId())
+                    .queryParam("tab_id", context.getAuthenticationSession().getTabId())
+                    .build();
+
+            logger.info("[AUTO-REGISTRATION] Redirecting to registration URL: " + registrationUri);
+
+            // Store the attempted username so it can be pre-filled in registration form
+            context.getAuthenticationSession().setAuthNote("ATTEMPTED_USERNAME_FOR_REGISTRATION", attemptedUsername);
+            
+            // Create redirect response
+            Response redirectResponse = Response.status(Response.Status.FOUND)
+                    .location(registrationUri)
+                    .build();
+            
+            context.forceChallenge(redirectResponse);
+            return false;
+        } catch (Exception e) {
+            logger.error("[AUTO-REGISTRATION] Failed to redirect to registration page", e);
+            // Fall back to showing error
+            context.getEvent().error(Errors.USER_NOT_FOUND);
+            assemblyForm(context, context.form());
+            Response challengeResponse = challenge(context, getDefaultChallengeMessage(context), FIELD_USERNAME);
+            context.failureChallenge(AuthenticationFlowError.INVALID_USER, challengeResponse);
+            return false;
+        }
+    }
+
+    private boolean validateUserForLogin(AuthenticationFlowContext context, UserModel user, MultivaluedMap<String, String> inputData) {
+        if (!enabledUser(context, user)) {
+            return false;
+        }
+        String rememberMe = inputData.getFirst("rememberMe");
+        boolean remember = rememberMe != null && rememberMe.equalsIgnoreCase("on");
+        if (remember) {
+            context.getAuthenticationSession().setAuthNote(Details.REMEMBER_ME, "true");
+            context.getEvent().detail(Details.REMEMBER_ME, "true");
+        } else {
+            context.getAuthenticationSession().removeAuthNote(Details.REMEMBER_ME);
+        }
+        context.setUser(user);
+        return true;
     }
 
     private boolean validatePhoneWithAutoRegistration(AuthenticationFlowContext context, String phoneNumber, String code) {
@@ -338,6 +459,12 @@ public class PhoneUsernamePasswordFormWithAutoRegistration extends PhoneUsername
                 .label("Auto Registration: Phone as Username")
                 .helpText("Use phone number as username for auto-registered users.")
                 .defaultValue(true)
+                .add()
+                .property().name(CONFIG_REDIRECT_TO_REGISTRATION_ON_USER_NOT_FOUND)
+                .type(BOOLEAN_TYPE)
+                .label("Redirect to Registration on User Not Found")
+                .helpText("When enabled, if a user tries to login with username/password and the user is not found, they will be redirected to the registration page instead of seeing an error. Requires registration to be enabled in the realm.")
+                .defaultValue(false)
                 .add()
                 .build();
     }
