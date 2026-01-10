@@ -1,0 +1,41 @@
+# Cursor AI Rules for Keycloak Phone Provider
+
+## Documentation Rules
+
+### Markdown Files Location
+- **ALWAYS create all `.md` files in the `docs/` folder**, organized by subject matter
+- **Exception**: `README.md` should remain in the project root
+- When creating new documentation, place it in the appropriate subfolder:
+  - `docs/` - General documentation (create subfolders as needed)
+
+### File Naming
+- Use descriptive, uppercase filenames with underscores: `FEATURE_NAME.md`
+- For summaries: `FEATURE_SUMMARY.md`
+- For fixes: `FIX_ISSUE_NAME.md`
+- For setup guides: `FEATURE_SETUP.md`
+
+## Code Style
+
+### Java/Maven
+- Follow Java naming conventions
+- Use Maven best practices
+- Follow Keycloak SPI conventions
+- Use dependency injection where applicable
+
+### Project Structure
+- Main provider: `keycloak-phone-provider/`
+- SMS providers: `keycloak-sms-provider-*/`
+- Resources: `keycloak-phone-provider.resources/`
+
+## General Guidelines
+
+1. **Documentation**: Always document changes in `docs/` folder
+2. **Error Handling**: Use proper exception handling
+3. **Configuration**: Use SPI configuration, never hardcode secrets
+4. **Testing**: Write unit tests for providers
+
+## When Creating New Files
+
+- **Documentation**: Always in `docs/` with appropriate subfolder
+- **Java Classes**: In appropriate Maven module package structure
+- **Resources**: In `resources/` directory of respective module
